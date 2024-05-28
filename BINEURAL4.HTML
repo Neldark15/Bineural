@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador de Audio Binaural</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #0f2027, #203a43, #2c5364);
+        }
+        h1 {
+            color: #fff;
+            z-index: 10;
+        }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            z-index: 10;
+        }
+        .frequency-display {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            max-width: 400px;
+        }
+        .frequency-display div {
+            text-align: center;
+            color: #fff;
+        }
+        button, select, input {
+            padding: 10px;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover, select:hover, input:hover {
+            opacity: 0.8;
+        }
+        .explanation {
+            text-align: center;
+            margin-top: 20px;
+            max-width: 600px;
+            color: #fff;
+        }
+        .wave {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 200%;
+            height: 200%;
+            transform: translate(-50%, -50%);
+            opacity: 0.5;
+        }
+        @keyframes wave {
+            0% {
+                transform: translateX(0) translateY(0) rotate(0deg);
+            }
+            100% {
+                transform: translateX(-50%) translateY(-50%) rotate(360deg);
+            }
+        }
+        .wave path {
+            fill: none;
+            stroke: #ffffff;
+            stroke-width: 3;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            animation: wave 10s linear infinite;
+        }
+    </style>
+</head>
+<body id="body">
+    <h1>Generador de Audio Binaural</h1>
+    <div class="controls">
+        <label for="duration">Duración (segundos):</label>
+        <input type="number" id="duration" value="5" min="1">
+        <label for="infinite">Infinito:</label>
+        <input type="checkbox" id="infinite">
+        <label for="baseFreq">Frecuencia Base (Hz):</label>
+        <input type="number" id="baseFreq" value="440" min="20" max="20000">
+        <label for="volume">Volumen:</label>
+        <input type="range" id="volume" min="0" max="1" step="0.01" value="0.5">
+        <label for="waveType">Tipo de Onda:</label>
+        <select id="waveType" onchange="updateExplanation()">
+            <option value="alpha">Alpha (8-13 Hz) - Relajación, meditación ligera</option>
+            <option value="beta">Beta (14-30 Hz) - Estado de alerta, concentración</option>
+            <option value="delta">Delta (1-4 Hz) - Sueño profundo, curación</option>
+            <option value="theta">Theta (4-8 Hz) - Sueño ligero, relajación profunda</option>
+            <option value="gamma">Gamma (30-100 Hz) - Estado de alerta muy alta, aprendizaje</option>
+            <option value="epsilon">Epsilon (<1 Hz) - Estados muy profundos de meditación</option>
+            <option value="mu">Mu (8-12 Hz) - Relajación física, calma del cuerpo</option>
+        </select>
+        <button id="generate">Generar Audio Binaural</button>
+        <button id="stop">Detener</button>
+        <div class="frequency-display">
+            <div>
+                <h2>Oído Izquierdo</h2>
+                <p id="leftFreq">0 Hz</p>
+            </div>
+            <div>
+                <h2>Oído Derecho</h2>
+                <p id="rightFreq">0 Hz</p>
+            </div>
+        </div>
+    </div>
+    <div class="explanation" id="explanation">
+        Seleccione un tipo de onda para ver la explicación aquí.
+    </div>
+    <div class="controls">
+        <label for="bgColor">Color de Fondo:</label>
+        <input type="color" id="bgColor" value="#000000" onchange="updateColors()">
+        <label for="btnColor">Color de Botones:</label>
+        <input type="color" id="btnColor" value="#ffffff" onchange="updateColors()">
+        <label for="textColor">Color del Texto:</label>
+        <input type="color" id="textColor" value="#ffffff" onchange="updateColors()">
+    </div>
+    <svg class="wave" viewBox="0 0 100 100">
+        <path d="M 0,50 Q 25,0 50,50 T 100,50"/>
+        <path d="M 0,60 Q 25,10 50,60 T 100,60"/>
+        <path d="M 0,70 Q 25,20 50,70 T 100,70"/>
+    </svg>
+
+    <script>
+        let audioContext;
+        let source;
+
+        const waveTypes = {
+            alpha: { min: 8, max: 13, description: "Alpha (8-13 Hz) - Relajación, meditación ligera. Las ondas alfa son dominantes durante estados de calma y tranquilidad, y se observan cuando estamos en un estado relajado pero alerta. Ayudan a reducir el estrés y mejorar la creatividad." },
+            beta: { min: 14, max: 30, description: "Beta (14-30 Hz) - Estado de alerta, concentración. Las ondas beta son predominantes cuando estamos despiertos, activos y enfocados en tareas cognitivas. Favorecen la atención y el aprendizaje." },
+            delta: { min: 1, max: 4, description: "Delta (1-4 Hz) - Sueño profundo, curación. Las ondas delta se producen en las etapas más profundas del sueño y están relacionadas con la regeneración y reparación del cuerpo y la mente." },
+            theta: { min: 4, max: 8, description: "Theta (4-8 Hz) - Sueño ligero, relajación profunda. Las ondas theta son comunes en estados de sueño ligero y durante la meditación profunda. Ayudan en la introspección y la conexión emocional." },
+            gamma: { min: 30, max: 100, description: "Gamma (30-100 Hz) - Estado de alerta muy alta, aprendizaje. Las ondas gamma se observan durante la atención intensiva y el procesamiento cognitivo avanzado." },
+            epsilon: { min: 0.1, max: 1, description: "Epsilon (<1 Hz) - Estados muy profundos de meditación. Las ondas epsilon son raras y se producen en estados de meditación extremadamente profundos." },
+            mu: { min: 8, max: 12, description: "Mu (8-12 Hz) - Relajación física, calma del cuerpo. Las ondas mu se observan durante estados de inactividad física y relajación muscular." }
+        };
+
+        document.getElementById('generate').addEventListener('click', generateBinauralBeat);
+        document.getElementById('stop').addEventListener('click', stopBinauralBeat);
+
+        function updateExplanation() {
+            const waveTypeInput = document.getElementById('waveType');
+            const selectedWave = waveTypeInput.value;
+            const explanation = waveTypes[selectedWave].description;
+            document.getElementById('explanation').textContent = explanation;
+        }
+
+        function updateColors() {
+            const bgColor = document.getElementById('bgColor').value;
+            const btnColor = document.getElementById('btnColor').value;
+            const textColor = document.getElementById('textColor').value;
+            document.getElementById('body').style.backgroundColor = bgColor;
+            document.getElementById('body').style.color = textColor;
+            document.querySelectorAll('button, select, input[type="number"], input[type="range"], input[type="color"]').forEach(el => {
+                el.style.backgroundColor = btnColor;
+                el.style.color = bgColor;
+            });
+            document.querySelectorAll('h1, h2, p, label').forEach(el => {
+                el.style.color = textColor;
+            });
+        }
+
+        function generateBinauralBeat() {
+            if (audioContext) {
+                audioContext.close();
+            }
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+            const durationInput = document.getElementById('duration');
+            const infiniteInput = document.getElementById('infinite');
+            const baseFreqInput = document.getElementById('baseFreq');
+            const volumeInput = document.getElementById('volume');
+            const waveTypeInput = document.getElementById('waveType');
+
+            const duration = infiniteInput.checked ? Infinity : parseFloat(durationInput.value);
+            const sampleRate = audioContext.sampleRate;
+            const baseFreq = parseFloat(baseFreqInput.value);
+            const volume = parseFloat(volumeInput.value);
+            const waveType = waveTypeInput.value;
+            const waveRange = waveTypes[waveType];
+            const binauralFreq = (waveRange.min + waveRange.max) / 2;
+
+            const leftFreq = baseFreq;
+            const rightFreq = baseFreq + binauralFreq;
+
+            document.getElementById('leftFreq').textContent = `${leftFreq} Hz`;
+            document.getElementById('rightFreq').textContent = `${rightFreq} Hz`;
+
+            const bufferSize = sampleRate * (isFinite(duration) ? duration : 2);
+            const buffer = audioContext.createBuffer(2, bufferSize, sampleRate);
+            const leftChannel = buffer.getChannelData(0);
+            const rightChannel = buffer.getChannelData(1);
+
+            for (let i = 0; i < leftChannel.length; i++) {
+                const time = i / sampleRate;
+                leftChannel[i] = Math.sin(2 * Math.PI * leftFreq * time);
+                rightChannel[i] = Math.sin(2 * Math.PI * rightFreq * time);
+            }
+
+            source = audioContext.createBufferSource();
+            source.buffer = buffer;
+
+            const gainNode = audioContext.createGain();
+            gainNode.gain.value = volume;
+
+            source.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            source.loop = infiniteInput.checked;
+            source.start();
+        }
+
+        function stopBinauralBeat() {
+            if (source) {
+                source.stop();
+                source.disconnect();
+                source = null;
+            }
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+        }
+
+        // Initial explanation update
+        updateExplanation();
+        // Initial color update
+        updateColors();
+    </script>
+</body>
+</html>
